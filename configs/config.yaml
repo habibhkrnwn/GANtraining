@@ -1,0 +1,40 @@
+project:
+  name: carotid-diffusion-augmentor
+  seed: 42
+
+paths:
+  cubs_2021_dir: "data/DATASET for Carotid Ultrasound Boundary Study (CUBS) an open multi-center analysis of computerized intima-media thickness measurement systems and their clinical impact"
+  cubs_2022_dir: "data/DATASET_CUBS_tech"
+  processed_dir: "data/processed"
+  split_info_json: "data/outputs/split_info.json"
+
+data:
+  image_size: [256, 256]
+  normalize_range: [-1.0, 1.0]
+  thin_imc_threshold_mm: 0.5
+  ambiguous_std_threshold_mm: 0.15
+
+preprocess:
+  mask_source: "A1"
+  image_size: [256, 256]
+  interpolation_points: 256
+  imt_threshold_mm: 0.5
+  ambiguous_std_threshold_mm: 0.15
+  save_overlay_preview: true
+  preview_limit: 20
+
+training:
+  batch_size: 8
+  num_workers: 4
+  epochs: 100
+  learning_rate: 0.0001
+
+diffusion:
+  base_model: "runwayml/stable-diffusion-v1-5"
+  use_controlnet: true
+  guidance_scale: 7.5
+
+segmentation:
+  model_name: "sama_unet"
+  in_channels: 1
+  out_channels: 1
