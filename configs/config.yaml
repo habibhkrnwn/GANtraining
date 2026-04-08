@@ -6,7 +6,10 @@ paths:
   cubs_2021_dir: "data/DATASET for Carotid Ultrasound Boundary Study (CUBS) an open multi-center analysis of computerized intima-media thickness measurement systems and their clinical impact"
   cubs_2022_dir: "data/DATASET_CUBS_tech"
   processed_dir: "data/processed"
+  processed_root: "data/processed"
   split_info_json: "data/outputs/split_info.json"
+  run_report_md: "reports/run_tracking.md"
+  seg_sanity_dir: "outputs/seg_sanity"
 
 data:
   image_size: [256, 256]

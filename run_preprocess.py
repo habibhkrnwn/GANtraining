@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover
 
 from src.data.preprocess import build_sample_record, save_metadata_csv, save_sample_npz
 from src.utils.io import read_split_info
+from src.utils.run_report import append_markdown_run_report
 
 
 def resolve_split_items(split_block: dict[str, list[str]]) -> list[tuple[str, str]]:
@@ -166,6 +167,7 @@ def main(config_path: str, limit: int | None = None) -> None:
 
     processed_root = ROOT / paths_cfg["processed_dir"]
     processed_root.mkdir(parents=True, exist_ok=True)
+    run_report_md = ROOT / paths_cfg.get("run_report_md", "reports/run_tracking.md")
 
     split_info_path = ROOT / paths_cfg["split_info_json"]
     split_info = read_split_info(split_info_path)
@@ -235,9 +237,23 @@ def main(config_path: str, limit: int | None = None) -> None:
         "processed_cubs_2021": len(metadata_2021),
         "processed_cubs_2022": len(metadata_2022),
     }
+    details = {
+        "config_path": str(Path(config_path)),
+        "limit": limit if limit is not None else "all",
+        "metadata_csv": str(metadata_path),
+        "failed_csv": str(failed_path),
+    }
+    report_path = append_markdown_run_report(
+        report_path=run_report_md,
+        stage="preprocess",
+        summary=summary,
+        details=details,
+    )
+
     print(summary)
     print(f"Saved metadata to: {metadata_path}")
     print(f"Saved failed log to: {failed_path}")
+    print(f"Saved run report to: {report_path}")
 
 
 if __name__ == "__main__":
