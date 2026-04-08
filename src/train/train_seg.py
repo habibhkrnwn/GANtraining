@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 from pathlib import Path
+import sys
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -10,11 +11,15 @@ import numpy as np
 import pandas as pd
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.utils.data import DataLoader, Subset
 import yaml
 
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from src.data.dataset import CUBSProcessedDataset
-from src.eval.metrics import dice_score, iou_score
 from src.model.segmentation import SAMAUNet, build_unet_baseline
 from src.utils.run_report import append_markdown_run_report
 from src.utils.visualize import overlay_mask
@@ -32,6 +37,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-val-samples", type=int, default=64)
     parser.add_argument("--num-visuals", type=int, default=12)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument("--pos-weight", type=float, default=50.0)
+    parser.add_argument("--loss-alpha", type=float, default=0.5, help="alpha for BCE in combined loss")
     return parser.parse_args()
 
 
@@ -51,19 +58,47 @@ def _maybe_subset(dataset: CUBSProcessedDataset, max_samples: int | None) -> CUB
     return Subset(dataset, list(range(max_samples)))
 
 
-def _compute_batch_metrics(logits: torch.Tensor, target: torch.Tensor) -> tuple[float, float]:
-    probs = torch.sigmoid(logits).detach().cpu().numpy()
-    truth = target.detach().cpu().numpy()
+def _compute_batch_metrics(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    eps: float = 1e-7,
+) -> tuple[float, float, list[float]]:
+    """Compute binary Dice/IoU for 1-channel logits [B,1,H,W]."""
+    probs = torch.sigmoid(logits)
+    preds = (probs > 0.5).float()
+    targets_bin = (targets > 0.5).float()
 
-    dice_vals: list[float] = []
-    iou_vals: list[float] = []
-    for pred_i, true_i in zip(probs, truth):
-        pred_bin = (pred_i >= 0.5).astype(np.uint8)
-        true_bin = (true_i >= 0.5).astype(np.uint8)
-        dice_vals.append(dice_score(pred_bin, true_bin))
-        iou_vals.append(iou_score(pred_bin, true_bin))
+    tp = (preds * targets_bin).sum(dim=(1, 2, 3))
+    fp = (preds * (1.0 - targets_bin)).sum(dim=(1, 2, 3))
+    fn = ((1.0 - preds) * targets_bin).sum(dim=(1, 2, 3))
 
-    return float(np.mean(dice_vals)), float(np.mean(iou_vals))
+    dice = (2.0 * tp + eps) / (2.0 * tp + fp + fn + eps)
+    iou = (tp + eps) / (tp + fp + fn + eps)
+
+    return float(dice.mean().item()), float(iou.mean().item()), [float(v) for v in dice.detach().cpu().tolist()]
+
+
+def combined_loss(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    pos_weight: torch.Tensor,
+    alpha: float = 0.5,
+    eps: float = 1e-7,
+) -> torch.Tensor:
+    """BCE + soft Dice loss for thin-foreground binary segmentation."""
+    alpha = float(max(0.0, min(1.0, alpha)))
+    targets_bin = (targets > 0.5).float()
+
+    bce = F.binary_cross_entropy_with_logits(logits, targets_bin, pos_weight=pos_weight)
+
+    probs = torch.sigmoid(logits)
+    tp = (probs * targets_bin).sum(dim=(1, 2, 3))
+    fp = (probs * (1.0 - targets_bin)).sum(dim=(1, 2, 3))
+    fn = ((1.0 - probs) * targets_bin).sum(dim=(1, 2, 3))
+    soft_dice = (2.0 * tp + eps) / (2.0 * tp + fp + fn + eps)
+    dice_loss = 1.0 - soft_dice.mean()
+
+    return alpha * bce + (1.0 - alpha) * dice_loss
 
 
 def _save_prediction_visuals(
@@ -123,9 +158,12 @@ def _save_prediction_visuals(
 def _run_one_epoch(
     model: nn.Module,
     loader: DataLoader,
-    criterion: nn.Module,
+    criterion: Any,
     optimizer: torch.optim.Optimizer | None,
     device: torch.device,
+    debug_once: bool = False,
+    debug_tag: str = "",
+    debug_logs: list[str] | None = None,
 ) -> dict[str, float]:
     is_train = optimizer is not None
     model.train(is_train)
@@ -135,6 +173,7 @@ def _run_one_epoch(
     total_iou = 0.0
     steps = 0
 
+    debug_printed = False
     for batch in loader:
         images = batch["image"].to(device)
         masks = batch["mask"].to(device)
@@ -149,7 +188,21 @@ def _run_one_epoch(
             loss.backward()
             optimizer.step()
 
-        dice_val, iou_val = _compute_batch_metrics(logits, masks)
+        dice_val, iou_val, dice_per_sample = _compute_batch_metrics(logits, masks)
+
+        if debug_once and not debug_printed:
+            mask_min = float(masks.min().item())
+            mask_max = float(masks.max().item())
+            mask_unique = sorted(float(v) for v in torch.unique(masks.detach().cpu()).tolist())
+            debug_msg = (
+                f"[DEBUG {debug_tag}] logits_shape={tuple(logits.shape)} mask_min={mask_min:.4f} "
+                f"mask_max={mask_max:.4f} mask_unique={mask_unique} "
+                f"dice_per_sample={[round(v, 4) for v in dice_per_sample]}"
+            )
+            print(debug_msg)
+            if debug_logs is not None:
+                debug_logs.append(debug_msg)
+            debug_printed = True
 
         total_loss += float(loss.item())
         total_dice += dice_val
@@ -200,7 +253,19 @@ def main() -> None:
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-    criterion = nn.BCEWithLogitsLoss()
+    if len(train_loader.dataset) == 0:
+        raise RuntimeError("Train split is empty. Regenerate metadata.csv before training.")
+
+    pos_weight = torch.tensor([50.0], device=device)
+    loss_alpha = float(args.loss_alpha)
+
+    def criterion(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        return combined_loss(
+            logits=logits,
+            targets=targets,
+            pos_weight=pos_weight,
+            alpha=loss_alpha,
+        )
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -209,9 +274,28 @@ def main() -> None:
     visuals_dir = output_root / "visuals"
 
     history: list[dict[str, Any]] = []
+    debug_logs: list[str] = []
     for epoch in range(1, int(args.epochs) + 1):
-        train_metrics = _run_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_metrics = _run_one_epoch(model, val_loader, criterion, None, device)
+        train_metrics = _run_one_epoch(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device,
+            debug_once=False,
+            debug_tag="train",
+            debug_logs=debug_logs,
+        )
+        val_metrics = _run_one_epoch(
+            model,
+            val_loader,
+            criterion,
+            None,
+            device,
+            debug_once=(epoch == 1),
+            debug_tag="val",
+            debug_logs=debug_logs,
+        )
 
         row = {
             "epoch": epoch,
@@ -252,9 +336,10 @@ def main() -> None:
         checkpoint_path,
     )
 
+    visual_loader = val_loader if len(val_loader.dataset) > 0 else train_loader
     visuals_saved = _save_prediction_visuals(
         model=model,
-        loader=val_loader,
+        loader=visual_loader,
         output_dir=visuals_dir,
         device=device,
         max_items=max(1, int(args.num_visuals)),
@@ -266,6 +351,9 @@ def main() -> None:
         summary={
             "model": args.model,
             "device": str(device),
+            "loss": "bce_softdice",
+            "pos_weight": float(args.pos_weight),
+            "loss_alpha": loss_alpha,
             "epochs": int(args.epochs),
             "train_samples": len(train_loader.dataset),
             "val_samples": len(val_loader.dataset),
@@ -279,6 +367,7 @@ def main() -> None:
             "history_csv": str(history_csv),
             "checkpoint": str(checkpoint_path),
             "visuals_dir": str(visuals_dir),
+            "debug_batch": " | ".join(debug_logs) if debug_logs else "n/a",
         },
     )
 
