@@ -255,3 +255,99 @@
 - visuals_dir: outputs\seg_sanity\20260408_175910\visuals
 - debug_batch: [DEBUG val] logits_shape=(2, 1, 256, 256) mask_min=0.0000 mask_max=1.0000 mask_unique=[0.0, 1.0] dice_per_sample=[0.0224, 0.033]
 
+
+## 2026-04-08 18:11:07 | segmentation_sanity_train
+
+### Summary
+- model: unet
+- device: cpu
+- loss: bce_softdice
+- pos_weight: 50.0
+- loss_alpha: 1.0
+- epochs: 3
+- train_samples: 192
+- val_samples: 96
+- batch_size: 2
+- visuals_saved: 12
+- best_val_dice: 0.02692376837755243
+- last_val_dice: 0.026240974955726415
+
+### Details
+- output_root: outputs\seg_sanity\20260408_181012
+- history_csv: outputs\seg_sanity\20260408_181012\history.csv
+- checkpoint: outputs\seg_sanity\20260408_181012\checkpoint_last.pt
+- visuals_dir: outputs\seg_sanity\20260408_181012\visuals
+- debug_batch: [DEBUG val] logits_shape=(2, 1, 256, 256) mask_min=0.0000 mask_max=1.0000 mask_unique=[0.0, 1.0] dice_per_sample=[0.022, 0.0318]
+
+
+## 2026-04-08 18:13:59 | segmentation_sanity_train
+
+### Summary
+- model: unet
+- device: cpu
+- loss: bce_softdice
+- pos_weight: 50.0
+- loss_alpha: 0.8
+- epochs: 3
+- train_samples: 192
+- val_samples: 96
+- batch_size: 2
+- visuals_saved: 12
+- best_val_dice: 0.02629951680622374
+- last_val_dice: 0.02573374074806149
+
+### Details
+- output_root: outputs\seg_sanity\20260408_181305
+- history_csv: outputs\seg_sanity\20260408_181305\history.csv
+- checkpoint: outputs\seg_sanity\20260408_181305\checkpoint_last.pt
+- visuals_dir: outputs\seg_sanity\20260408_181305\visuals
+- debug_batch: [DEBUG val] logits_shape=(2, 1, 256, 256) mask_min=0.0000 mask_max=1.0000 mask_unique=[0.0, 1.0] dice_per_sample=[0.0213, 0.0311]
+
+
+## 2026-04-08 18:16:18 | segmentation_sanity_train
+
+### Summary
+- model: unet
+- device: cpu
+- loss: bce_softdice
+- pos_weight: 50.0
+- loss_alpha: 0.9
+- epochs: 3
+- train_samples: 192
+- val_samples: 96
+- batch_size: 2
+- visuals_saved: 12
+- best_val_dice: 0.1707475840424498
+- last_val_dice: 0.1707475840424498
+
+### Details
+- output_root: outputs\seg_sanity\20260408_181524
+- history_csv: outputs\seg_sanity\20260408_181524\history.csv
+- checkpoint: outputs\seg_sanity\20260408_181524\checkpoint_last.pt
+- visuals_dir: outputs\seg_sanity\20260408_181524\visuals
+- debug_batch: [DEBUG val] logits_shape=(2, 1, 256, 256) mask_min=0.0000 mask_max=1.0000 mask_unique=[0.0, 1.0] dice_per_sample=[0.0742, 0.1003]
+
+
+## 2026-04-08 18:33:37 | segmentation_sanity_train
+
+### Summary
+- model: unet
+- device: cpu
+- loss: bce_softdice
+- pos_weight: 50.0
+- loss_alpha: 0.9
+- epochs: 20
+- train_samples: 192
+- val_samples: 96
+- batch_size: 2
+- visuals_saved: 12
+- best_val_dice: 0.41792309905091923
+- last_val_dice: 0.41792309905091923
+
+### Details
+- output_root: outputs\seg_sanity\20260408_182710
+- history_csv: outputs\seg_sanity\20260408_182710\history.csv
+- checkpoint: outputs\seg_sanity\20260408_182710\checkpoint_last.pt
+- visuals_dir: outputs\seg_sanity\20260408_182710\visuals
+- debug_batch: [DEBUG val] logits_shape=(2, 1, 256, 256) mask_min=0.0000 mask_max=1.0000 mask_unique=[0.0, 1.0] dice_per_sample=[0.0353, 0.0514]
+
